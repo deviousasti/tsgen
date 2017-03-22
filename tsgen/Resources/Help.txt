@@ -1,0 +1,38 @@
+
+tsgen tool - June 2015
+---------------------------
+
+	Help (Use tsgen /? to view this)
+
+	Usage : tsgen <assembly> [<output file>] [flags]
+
+	E.g., tsgen WebService.dll webservice.js -comments
+
+	If an output file is not specified, the output file 
+	will be the same name as the assembly. 
+
+	All files can take relative or absolute paths.
+
+Flags
+-----
+
+	-comments	: Write XML comments from the classes onto the generated JS for Visual Studio intellisense support
+	-nolib		: Do not include service library, it will be included externally. This is advisable.
+	-verbose	: Verbose output
+	-wait		: Pause after output file is generated
+	-dep		: Include dependencies in generated output
+	-pack		: Pack the resulting JS output
+
+Requires
+--------
+
+	json2				http://www.json.org/js.html
+
+	Namespace.js		http://maximebf.com/namespacejs	
+
+	Service.js			[internal]
+
+ Does not require
+ -----------------
+
+ jquery					No, really		

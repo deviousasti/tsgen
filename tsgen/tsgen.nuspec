@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package >
+  <metadata>
+    <id>tsgen</id>
+    <version>2.0.0</version>
+    <title>Typescript Generator</title>
+    <authors>asti</authors>
+    <owners>asti</owners>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Generates typescript strongly typed proxies from CLR assemblies</description>
+    <releaseNotes>Initial release.</releaseNotes>
+    <copyright>Copyright 2077</copyright>
+    <tags>codegen javascript typescript</tags>
+  </metadata>
+</package>

@@ -9,13 +9,6 @@ interface ByRef<T> {
     ref: T;
 }
 
-declare module collections {
-    export class Dictionary<TKey, TValue> { }
-    export class HashSet<T> { }
-    export class List<T> { }
-    export class Queue<T> { }
-}
-
 declare module Services {
 	
 }

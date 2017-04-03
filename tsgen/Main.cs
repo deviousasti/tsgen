@@ -277,7 +277,7 @@ namespace tsgen
 
             JSFunction jsm;
 
-            if (service.IsDefined(typeof(JsSocketServiceAttribute), true) || service.IsDefined(typeof(ServiceContractAttribute), true) )
+            if (service.IsDefined(typeof(JsSocketServiceAttribute), true) || service.IsDefined(typeof(ServiceContractAttribute), true))
                 jsm = new JSSocketHostMethod();
             else
                 jsm = new JSSocketClientMethod() { IsEvent = method.IsDefined(typeof(JsEventAttribute), true) };
@@ -548,7 +548,7 @@ namespace tsgen
 
         private void GenerateProperties(Type type, JSClass jclass)
         {
-            if(jclass is JSSocketService || jclass is JSWebService)
+            if (jclass is JSSocketService || jclass is JSWebService)
                 return;
 
             foreach (var constant in type.GetFields(BindingFlags.Public | BindingFlags.Static)/*.Where(x =>  x.IsLiteral  && !x.IsInitOnly) */)
@@ -615,10 +615,15 @@ namespace tsgen
 
                 JSProperty newProperty = new JSProperty()
                 {
-                    Name = prop.Name,
+                    Name = ToCamelCase(prop.Name),
                     Type = JSType.GetType(prop.PropertyType),
                     DefaultValue = defValue,
                 };
+
+                foreach (var dependency in newProperty.Type.Dependencies)
+                {
+                    GenerateType(dependency);
+                }
 
                 if (!prop.CanRead)
                     newProperty.PropertyType = JsPropertyType.WriteOnly;
@@ -663,6 +668,12 @@ namespace tsgen
             {
                 jclass.Properties.Insert(0, new JSProperty() { Name = "__type", Value = string.Format("{0}", type.FullName), Type = JSType.String });
             }
+        }
+
+        static string ToCamelCase(string name)
+        {
+            return name.Substring(0, 1).ToLower() +
+                name.Substring(1);
         }
 
         private void GenerateParameters(MethodBase method, JSFunction jsm)

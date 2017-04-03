@@ -248,6 +248,8 @@ namespace tsgen
             TypeName = string.Format("{0}.{1}", sourceType.Namespace, sourceType.Name);
         }
 
+        public virtual IEnumerable<Type> Dependencies => new[] { SourceType };
+
         public virtual bool IsGenericType { get { return false; } }
 
         public Type SourceType { get; set; }
@@ -430,6 +432,11 @@ namespace tsgen
                 TypeParameters = sourceType.GetGenericArguments().Select(GetType).ToArray();
                 DefaultValue = TypeDefinition.DefaultValue;
             }
+        }
+
+        public override IEnumerable<Type> Dependencies
+        {
+            get { return this.TypeParameters.SelectMany(t => t.Dependencies); }
         }
 
         public override bool IsGenericType { get { return true; } }

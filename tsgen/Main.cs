@@ -322,7 +322,7 @@ namespace tsgen
 
                 GenerateType(method.ReturnType);
 
-                jsm.Name = method.Name;
+                jsm.Name = ToCamelCase(method.Name);
                 jsm.IsSignature = jclass.DefinitionOnly;
 
                 try
@@ -615,7 +615,7 @@ namespace tsgen
 
                 JSProperty newProperty = new JSProperty()
                 {
-                    Name = ToCamelCase(prop.Name),
+                    Name = prop.Name,
                     Type = JSType.GetType(prop.PropertyType),
                     DefaultValue = defValue,
                 };
@@ -672,7 +672,6 @@ namespace tsgen
 
         static string ToCamelCase(string name)
         {
-            return name;
             return name.Substring(0, 1).ToLower() +
                 name.Substring(1);
         }

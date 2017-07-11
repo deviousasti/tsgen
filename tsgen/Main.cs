@@ -672,6 +672,7 @@ namespace tsgen
 
         static string ToCamelCase(string name)
         {
+            return name;
             return name.Substring(0, 1).ToLower() +
                 name.Substring(1);
         }

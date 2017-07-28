@@ -120,7 +120,7 @@ namespace tsgen
             StringBuilder buffer = new StringBuilder();
 
             //Write header
-            buffer.AppendFormat(tsgen.Properties.Resources.Header, DateTime.Now, ServiceAssembly.FullName);
+            buffer.AppendFormat(tsgen.Properties.Resources.Header, ServiceAssembly.FullName);
 
             if (IncludeDependencies)
             {

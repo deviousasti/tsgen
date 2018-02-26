@@ -287,14 +287,23 @@ namespace tsgen
                 if (method.ReturnType.IsGenericType &&
                     (method.ReturnType.GetGenericTypeDefinition() == typeof(IObservable<>) ||
                     method.ReturnType.GetGenericTypeDefinition() == typeof(Task<>)))
+                {
+                    Type returnType = method.ReturnType.GetGenericArguments()[0];
+                    GenerateType(returnType);
+
                     if (method.IsDefined(typeof(SynchronousAttribute), true))
-                        jsm.ReturnType = JSType.GetType(method.ReturnType.GetGenericArguments()[0]);
+                    {                        
+                        jsm.ReturnType = JSType.GetType(returnType);                        
+                    }
                     else
                         jsm.ReturnType = JSType.GetType(method.ReturnType);
+                }
                 else
+                {
                     jsm.ReturnType = JSType.GetGenericType(JSType.Promise, JSType.GetType(method.ReturnType));
+                }
             }
-
+            
             GenerateParameters(method, jsm);
 
             return jsm;

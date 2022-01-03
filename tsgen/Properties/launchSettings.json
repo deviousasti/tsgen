@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "tsgen": {
+      "commandName": "Project",
+      "commandLineArgs": "stormbreaker-api.dll stormbreaker-api.ts -verbose",
+      "workingDirectory": "D:\\Workspace\\thor-stormbreaker-hvfc\\src\\legacy\\Stormbreaker.Legacy.Api.HostDotNetCore\\bin\\Debug\\netcoreapp3.1"
+    }
+  }
+}

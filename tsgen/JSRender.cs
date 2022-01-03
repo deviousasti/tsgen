@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Web.Http;
 
 namespace tsgen
 {
@@ -98,8 +99,12 @@ namespace tsgen
                     buffer.AppendFormatLine("{0}: {1}{2};", Name, Type, HasDefaultValue ? string.Format(" = {0}", QualifiedValue) : "");
                     break;
 
+                case JsPropertyType.Assignment:
+                    buffer.AppendFormat("{0}: {1}", Name, Value);
+                    break;
+
                 case JsPropertyType.Inline:
-                    buffer.AppendFormat("{0}: {1}{2}", Name, Type, HasDefaultValue || IsOptional ? string.Format(" = {0}", QualifiedValue) : "");
+                    buffer.AppendFormat("{0}{1}: {2}{3}", Name, IsOptional ? "?" : "", Type, HasDefaultValue && !IsOptional ? string.Format(" = {0}", QualifiedValue) : "");
                     break;
 
                 case JsPropertyType.Static:
@@ -111,65 +116,9 @@ namespace tsgen
                     buffer.AppendFormatLine("{2} get {0} (): {1}{{ throw new Error(\"Not implemented: {0}\"); }}", Name, Type, IsStatic ? "static" : "");
                     break;
 
-                case JsPropertyType.Observable:
-                    buffer.AppendFormatLine("private ${0} = ko.observable<{1}>();", Name, Type, QualifiedValue);
-                    buffer.AppendFormatLine("get {0} (): {1}{{ return this.${0}(); }}", Name, Type);
-                    buffer.AppendFormatLine("set {0} (value: {1}) {{ this.${0}(value); }}", Name, Type);
-                    buffer.AppendLine();
 
-                    break;
 
-                case JsPropertyType.Dependant:
-
-                    buffer.AppendFormat(@"{0}.prototype.proto{1} = function() {{
-                                            /* Dependencies -> */ {2}
-                                            return '{1} not overridden';
-                                        }};",
-                           Name,
-                           Dependencies.Length > 0
-                         ? Dependencies.Select(d => string.Format("this.${0}();", d))
-                                            .Aggregate((a, c) => String.Format("{0} {1}", a, c))
-                                            :
-                                            "//none"
-                    );
-
-                    buffer.AppendLine();
-
-                    buffer.AppendFormat(@"{0}.prototype.__defineGetter__('{1}', function () {{
-                                                                    return this.proto{1}();
-                                        }});",
-
-                         Name
-                    );
-
-                    buffer.AppendLine();
-
-                    buffer.AppendFormat(@"{0}.prototype.__defineSetter__('{1}', function (value) {{
-                                           if(value != null && value.hasOwnProperty('Parent')) value.Parent = this;
-                                           if(value instanceof Function)
-                                                this.{2}{1} = {3}(value{4});
-                                           else
-                                                this.{2}{1} = {3}(function() {{ return value; }}{4});
-                                        }});",
-                         Name,
-                         Dependencies.Length > 0 ? "_" : "$",
-                         Dependencies.Length > 0 ? "" : "ko.dependentObservable",
-                         Dependencies.Length > 0 ? "" : ", this"
-                         );
-                    buffer.AppendLine();
-                    break;
-
-                case JsPropertyType.ObservableCollection:
-                    if (Type.IsGenericType)
-                        Type = (Type as tsgenericType).TypeParameters.First();
-
-                    buffer.AppendFormatLine("private ${0} = ko.observableArray<{1}>();", Name, Type, QualifiedValue);
-                    buffer.AppendFormatLine("get {0} (): {1}[] {{ return this.${0}(); }}", Name, Type);
-                    buffer.AppendFormatLine("set {0} (value: {1}[]) {{ this.${0}(value); }}", Name, Type);
-                    buffer.AppendLine();
-
-                    break;
-
+          
             }
 
             if (IsWatched)
@@ -228,10 +177,14 @@ namespace tsgen
         public readonly static JSType Queue = new JSType(typeof(Queue<>)) { TypeName = "collections.Queue" };
 
         public readonly static JSType Promise = new JSType(typeof(Task<>)) { TypeName = "Promise" };
+        
+        public readonly static JSType ApiResult = new JSType(typeof(Microsoft.AspNetCore.Mvc.ActionResult)) { TypeName = "ApiResult" };
 
         public readonly static JSType Observable = new JSType(typeof(IObservable<>)) { TypeName = "Rx.Observable" };
 
         public readonly static JSType DataTable = new JSType(typeof(DataTable)) { TypeName = "DataTable" };
+        
+        public readonly static JSType Nullable = new JSType(typeof(Nullable)) { TypeName = "Nullable" };
 
         readonly static Dictionary<Type, JSType> TypeMap = new Dictionary<Type, JSType>();
 
@@ -250,7 +203,7 @@ namespace tsgen
 
         public virtual IEnumerable<Type> Dependencies => new[] { SourceType };
 
-        public virtual bool IsGenericType { get { return false; } }
+        public virtual bool IsGenericType => false;
 
         public Type SourceType { get; set; }
 
@@ -328,6 +281,9 @@ namespace tsgen
             if (type == typeof(Action))
                 return JSType.Function;
 
+            if (type == typeof(Microsoft.AspNetCore.Mvc.ActionResult))
+                return JSType.ApiResult;
+
             if (type == typeof(int) || type == typeof(long) || type == typeof(byte) || type == typeof(uint) || type == typeof(short) || type == typeof(ushort))
                 return JSType.Number;
 
@@ -387,6 +343,9 @@ namespace tsgen
             if (type == typeof(void))
                 return Void;
 
+            if (type.FullName.StartsWith("Microsoft.FSharp.Core.FSharpOption") || type.FullName.StartsWith("System.Nullable"))
+                return JSType.Nullable;
+
             if (type.IsValueType && !type.IsEnum)
                 return JSType.Any;
 
@@ -406,6 +365,11 @@ namespace tsgen
         public virtual bool Is(JSType type)
         {
             return this.TypeName == type.TypeName;
+        }
+
+        public bool IsGenericTypeOf(JSType type)
+        {
+            return (this as tsgenericType)?.TypeDefinition == type;
         }
     }
 
@@ -542,13 +506,12 @@ namespace tsgen
 
             if (!IsSignature)
             {
-                buffer.AppendLine("{");
+                buffer.Append("{");
 
                 OnRenderBody(buffer);
 
                 buffer.AppendLine("}");
             }
-
         }
 
         protected virtual void OnRenderBody(StringBuilder buffer)
@@ -680,43 +643,23 @@ namespace tsgen
 
         public JSOLN ObjectData { get; set; }
 
-        public bool Asynchronous { get; set; }
+        public override bool IsVirtual => false;
+
+        public string RouteTemplate { get; set; }
 
         protected override void OnRenderBody(StringBuilder buffer)
         {
             base.OnRenderBody(buffer);
 
-            if (Asynchronous)
-                buffer.Append("return (Application.Util.ServiceRequest(");
-            else
-                buffer.AppendFormat("return ({0})(Application.Util.ServiceRequest(", ReturnType);
+            buffer.Append("return this.serviceRequest(");
 
             buffer.AppendFormat("'{0}', ", HTTPMethod);
 
-            buffer.AppendFormat("'{0}/{1}', ", ParentService.URI, Name);
+            buffer.Append(String.Format("`{0}/{1}`, ", ParentService.Prefix, RouteTemplate).Replace("{", "${"));
 
-            if (ObjectData != null)
-                ObjectData.Render(buffer);
+            ObjectData?.Render(buffer);
 
-            buffer.Append(", ");
-
-            //if (Asynchronous)
-            //{
-            //    if (ReturnType.IsPrimitive)
-            //        buffer.AppendFormat("{0}, ", JSFunction.SuccessCallback.Name);
-            //    else
-            //        buffer.AppendFormat("function(data) {{ {1}(({0})(data)) }}, ", ReturnType, JSFunction.SuccessCallback.Name);
-
-            //    buffer.AppendFormat("{0}, ", JSFunction.FailureCallback.Name);
-            //}
-            //else
-            //{
-            //    buffer.Append("null, null, ");
-            //}
-
-            buffer.AppendFormat("{0}", Asynchronous.ToString().ToLower());
-
-            buffer.Append("));");
+            buffer.AppendLine(");");
         }
     }
 
@@ -783,7 +726,11 @@ namespace tsgen
 
     public class JSClass : JSRenderable
     {
+        public static readonly JSClass JSWebServiceClass = new JSClass() { Name = "Class", FullName = "Services.WebServiceBase" };
+
         public static readonly JSClass JSProxyServiceClass = new JSClass() { Name = "Class", FullName = "Services.SocketProxyBase" };
+
+        public static readonly JSClass JS = new JSClass() { Name = "JsonString", FullName = "Object", IsPrimitive = true };
 
         public static readonly JSClass JSObject = new JSClass() { Name = "Object", FullName = "Object", IsPrimitive = true };
 
@@ -845,9 +792,9 @@ namespace tsgen
                 buffer.AppendFormat("static TypeDescriptor: Type = {{ Type: window['{0}'], Name: '{1}', FullName : '{0}', Parent: {2} }};", FullName, Name, ParentClass.FullName);
 
                 buffer.AppendLine();
-//                buffer.AppendFormat(@"getType(): Type {{
-//                                        return window['{0}'].TypeDescriptor;
-//                                  }}", FullName);
+                //                buffer.AppendFormat(@"getType(): Type {{
+                //                                        return window['{0}'].TypeDescriptor;
+                //                                  }}", FullName);
 
             }
             buffer.AppendLine();
@@ -931,15 +878,21 @@ namespace tsgen
         }
     }
 
-    public class JSWebService : JSOLN
+    public class JSWebService : JSClass
     {
-        public string URI { get; set; }
+        public string Prefix { get; set; }
+
+        public JSWebService()
+        {
+            ParentClass = JSClass.JSWebServiceClass;
+        }
     }
 
     public class JSOLN : JSClass
     {
         protected override void OnRender(StringBuilder buffer)
         {
+
             buffer.Append("{");
 
             if (AppendNewLine)

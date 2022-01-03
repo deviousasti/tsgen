@@ -70,7 +70,7 @@ public abstract class JSRenderable
 
     protected static void BufferListAsOLN(StringBuilder buffer, IEnumerable<JSRenderable> items)
     {
-        BufferListAsCSV(buffer, items, "{0} : ");
+        BufferListAsCSV(buffer, items, "");
     }
 
     protected static void BufferListAsCSV(StringBuilder buffer, IEnumerable<JSRenderable> items, string customFormat)

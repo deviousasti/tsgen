@@ -18,11 +18,9 @@ namespace tsgen
         Static,
         ReadOnly,
         WriteOnly,
-        Attached,
-        Observable,
-        Dependant,
-        ObservableCollection,
+        Attached,        
         Constant,
-        Inline
+        Inline,
+        Assignment
     }
 }

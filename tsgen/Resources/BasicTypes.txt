@@ -10,5 +10,10 @@ interface ByRef<T> {
 }
 
 declare module Services {
-	
+    class WebServiceBase {
+        serviceRequest (method: string, route: string, parameters : object);
+    }
 }
+
+declare type ApiResult = string;
+declare type Nullable<T> = T | null;

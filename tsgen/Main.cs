@@ -10,7 +10,7 @@ using System.Xml.Serialization;
 using JSHints;
 using System.Threading.Tasks;
 using System.ServiceModel;
-using System.Web.Http.Controllers;
+using System.Web.Http;
 
 namespace tsgen
 {
@@ -32,7 +32,7 @@ namespace tsgen
                 OutputPath = Path.GetFullPath(args.Where(s => s.Contains(".js") || s.Contains(".ts") || s.Contains(".txt")).FirstOrDefault()),
                 GenerateComments = args.Contains("-comments"),
                 Wait = args.Contains("-wait"),
-                ExcludeServiceLibrary = args.Contains("-nolib"),
+                IncludeServiceLibrary = args.Contains("-lib"),
                 IncludeDependencies = args.Contains("-dep"),
                 PackJS = args.Contains("-pack"),
                 Verbose = args.Contains("-verbose"),
@@ -79,13 +79,13 @@ namespace tsgen
 
         public bool Wait { get; set; }
 
-        public bool ExcludeServiceLibrary { get; set; }
+        public bool IncludeServiceLibrary { get; set; }
 
         public bool IncludeDependencies { get; set; }
 
         public bool PackJS { get; set; }
 
-        public bool Verbose { get; set; }
+        public bool Verbose { get; set; } = true;
 
         #endregion Flags
 
@@ -112,7 +112,7 @@ namespace tsgen
             RootNamespace = new JSGlobal() { Name = ServiceAssembly.GetName().Name };
 
             if (OutputPath == null) OutputPath = String.Format("{0}.js", System.IO.Path.GetFileNameWithoutExtension(FilePath));
-
+            
             //Fold in starting assembly
             GenerateAssembly(ServiceAssembly);
 
@@ -130,7 +130,7 @@ namespace tsgen
             buffer.AppendLine(tsgen.Properties.Resources.BasicTypes);
 
 
-            if (!ExcludeServiceLibrary)
+            if (IncludeServiceLibrary)
                 buffer.AppendLine(tsgen.Properties.Resources.Service);
 
             Console.WriteLine("Rendering output...");
@@ -169,9 +169,13 @@ namespace tsgen
                     GenerateAssembly(satelliteassm.Type.Assembly);
                 }
 
-                foreach (var type in assm.GetTypes())
+                Type[] types = assm.GetTypes();
+                foreach (var type in types)
                 {
-                    if (type.IsDefined(typeof(JsServiceAttribute), false))
+                    if (type.IsDefined(typeof(JsServiceAttribute), false) || 
+                        type.IsSubclassOf(typeof(System.Web.Http.ApiController)) ||
+                        type.IsSubclassOf(typeof(Microsoft.AspNetCore.Mvc.Controller))
+                    )
                         GenerateWebServiceClass(type);
 
                     if (type.IsDefined(typeof(JsSocketServiceAttribute), false) ||
@@ -237,14 +241,8 @@ namespace tsgen
 
         public JSNamespace RootNamespace
         {
-            get
-            {
-                return NSDictionary[String.Empty];
-            }
-            set
-            {
-                NSDictionary[String.Empty] = value;
-            }
+            get => NSDictionary[String.Empty];
+            set => NSDictionary[String.Empty] = value;
         }
 
         #endregion Namespacing
@@ -367,13 +365,10 @@ namespace tsgen
         {
             object[] attribs = service.GetCustomAttributes(false);
 
-            var jswebservice = attribs.OfType<JsServiceAttribute>().FirstOrDefault();
-
-            if (jswebservice == null)
-                return null;
+            var jswebservice = attribs.OfType<Microsoft.AspNetCore.Mvc.RouteAttribute>().FirstOrDefault();
 
             JSWebService jclass = GenerateType(service, ClassType.WebService) as JSWebService;
-            jclass.URI = jswebservice.URI;
+            jclass.Prefix = jswebservice?.Template ?? "";
 
             return jclass;
         }
@@ -382,9 +377,10 @@ namespace tsgen
         {
             object[] attribs = method.GetCustomAttributes(true);
 
-            var scriptMethod = attribs.OfType<IActionHttpMethodProvider>().FirstOrDefault();
+            var httpMethod = attribs.OfType<Microsoft.AspNetCore.Mvc.Routing.IActionHttpMethodProvider>().SelectMany(c => c.HttpMethods).FirstOrDefault() ?? "GET";
+            var routeTemplate = attribs.OfType< Microsoft.AspNetCore.Mvc.RouteAttribute> ().FirstOrDefault()?.Template;
 
-            if (scriptMethod == null)
+            if (routeTemplate == null)
                 return null;
 
             GenerateType(method.ReturnType);
@@ -393,10 +389,10 @@ namespace tsgen
             {
                 Name = method.Name,
                 Type = JSType.GetType(method.ReturnType),
-                HTTPMethod = scriptMethod.HttpMethods.First().ToString(),
+                HTTPMethod = httpMethod,
                 ParentService = jclass,
-                Asynchronous = true,
-                ReturnType = JSType.GetType(method.ReturnType)
+                ReturnType = JSType.GetType(method.ReturnType),
+                RouteTemplate = routeTemplate,
             };
 
             GenerateParameters(method, jsm);
@@ -405,21 +401,10 @@ namespace tsgen
 
             foreach (var param in jsm.Parameters)
             {
-                data.Properties.Add(new JSProperty() { Name = param.Name, Value = param.Name, Type = param.Type, AppendNewLine = false });
+                data.Properties.Add(new JSProperty() { Name = param.Name, Value = param.Name, Type = param.Type, AppendNewLine = false, PropertyType = JsPropertyType.Assignment });
             }
 
             jsm.ObjectData = data;
-
-            if (method.IsDefined(typeof(SynchronousAttribute), true))
-            {
-                jsm.Asynchronous = false;
-            }
-            else
-            {
-                jsm.Parameters.Add(JSVar.SuccessCallback);
-                jsm.Parameters.Add(JSVar.FailureCallback);
-            }
-
             return jsm;
         }
 
@@ -434,6 +419,9 @@ namespace tsgen
 
         private JSClass GenerateType(Type type, ClassType classType)
         {
+            if (type.FullName != null && type.FullName.StartsWith("Microsoft."))
+                return JSClass.JSObject;
+
             if (type == null)
                 return JSClass.JSObject;
 
@@ -638,27 +626,6 @@ namespace tsgen
                 if (!prop.CanWrite)
                     newProperty.PropertyType = JsPropertyType.ReadOnly;
 
-                if ((jclass is JSViewModel || prop.IsDefined(typeof(ObservableAttribute), false)) && prop.CanRead && prop.CanWrite)
-                {
-                    newProperty.PropertyType = JsPropertyType.Observable;
-                }
-
-                if (prop.IsDefined(typeof(DependentAttribute), false) ||
-                    (jclass is JSViewModel && !prop.CanWrite))
-                {
-                    if (prop.IsDefined(typeof(DependentAttribute), true))
-                    {
-                        newProperty.Dependencies = prop.GetCustomAttributes(true).OfType<DependentAttribute>().First().Dependencies;
-                    }
-                    else
-                        newProperty.Dependencies = new string[] { };
-
-                    newProperty.PropertyType = JsPropertyType.Dependant;
-                }
-
-                if (prop.IsDefined(typeof(ObservableCollectionAttribute), false) || (newProperty.Type.IsArray && jclass is JSViewModel))
-                    newProperty.PropertyType = JsPropertyType.ObservableCollection;
-
                 if (prop.IsDefined(typeof(NotifyChangeAttribute), false))
                     newProperty.IsWatched = true;
 
@@ -687,14 +654,19 @@ namespace tsgen
             foreach (var param in method.GetParameters())
             {
                 GenerateType(param.ParameterType);
+                var paramJsType = JSType.GetType(param.ParameterType);
+                var isNullable = paramJsType.IsGenericTypeOf(JSType.Nullable);
+                if (isNullable)
+                    paramJsType = (paramJsType as tsgenericType).TypeParameters.First();
+
                 jsm.Parameters.Add(new JSProperty()
                 {
                     Name = param.Name,
                     PropertyType = JsPropertyType.Inline,
                     AppendNewLine = false,
-                    Type = JSType.GetType(param.ParameterType),
+                    Type = paramJsType,
                     IsByRef = param.IsOut || param.ParameterType.IsByRef,
-                    IsOptional = param.IsOptional,
+                    IsOptional = param.IsOptional || isNullable,
                     DefaultValue = param.HasDefaultValue && param.DefaultValue != null ? param.DefaultValue.ToString() : TSConstructs.Null,
                     HasDefaultValue = param.HasDefaultValue
                 });

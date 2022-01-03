@@ -160,7 +160,7 @@ namespace DocsByReflection
         /// <returns>The XML document</returns>
         private static XmlDocument XMLFromAssemblyNonCached(Assembly assembly)
         {
-            string assemblyFilename = assembly.CodeBase;
+            string assemblyFilename = assembly.Location;
 
             const string prefix = "file:///";
 

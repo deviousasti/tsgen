@@ -4,15 +4,14 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Text;
-using System.Web.Script.Serialization;
-using System.Web.Script.Services;
 using System.Xml.Serialization;
 using JSHints;
 using System.Threading.Tasks;
 using System.ServiceModel;
+using System.Web.Http.Controllers;
+
 namespace tsgen
 {
     internal class Program
@@ -27,7 +26,7 @@ namespace tsgen
                 return;
             }
 
-            Program p = new Program()
+            Program p = new()
             {
                 FilePath = Path.GetFullPath(args.Where(s => s.Contains(".dll") || s.Contains(".exe")).FirstOrDefault()),
                 OutputPath = Path.GetFullPath(args.Where(s => s.Contains(".js") || s.Contains(".ts") || s.Contains(".txt")).FirstOrDefault()),
@@ -117,7 +116,7 @@ namespace tsgen
             //Fold in starting assembly
             GenerateAssembly(ServiceAssembly);
 
-            StringBuilder buffer = new StringBuilder();
+            StringBuilder buffer = new();
 
             //Write header
             buffer.AppendFormat(tsgen.Properties.Resources.Header, ServiceAssembly.FullName);
@@ -145,7 +144,7 @@ namespace tsgen
             if (PackJS)
             {
                 Console.WriteLine("Packing output...");
-                Dean.Edwards.ECMAScriptPacker packer = new Dean.Edwards.ECMAScriptPacker(Dean.Edwards.ECMAScriptPacker.PackerEncoding.Normal, true, false);
+                Dean.Edwards.ECMAScriptPacker packer = new(Dean.Edwards.ECMAScriptPacker.PackerEncoding.Normal, true, false);
                 Output = packer.Pack(Output);
             }
 
@@ -223,7 +222,7 @@ namespace tsgen
                 parent = RootNamespace;
             }
 
-            JSNamespace ns = new JSNamespace() { Name = sparents.Last(), FullName = name };
+            JSNamespace ns = new() { Name = sparents.Last(), FullName = name };
 
             parent.Namespaces.Add(ns);
 
@@ -232,9 +231,9 @@ namespace tsgen
             return ns;
         }
 
-        internal Dictionary<string, JSNamespace> NSDictionary = new Dictionary<string, JSNamespace>();
+        internal Dictionary<string, JSNamespace> NSDictionary = new();
 
-        internal Dictionary<Type, JSClass> TypeDictionary = new Dictionary<Type, JSClass>();
+        internal Dictionary<Type, JSClass> TypeDictionary = new();
 
         public JSNamespace RootNamespace
         {
@@ -379,22 +378,22 @@ namespace tsgen
             return jclass;
         }
 
-        private JSFunction GenerateWebMethod(Type service, MethodInfo method, JSWebService jclass)
+        private JSFunction GenerateWebMethod(Type _service, MethodInfo method, JSWebService jclass)
         {
             object[] attribs = method.GetCustomAttributes(true);
 
-            ScriptMethodAttribute scriptMethod = attribs.OfType<ScriptMethodAttribute>().FirstOrDefault();
+            var scriptMethod = attribs.OfType<IActionHttpMethodProvider>().FirstOrDefault();
 
             if (scriptMethod == null)
                 return null;
 
             GenerateType(method.ReturnType);
 
-            JSWebMethod jsm = new JSWebMethod()
+            JSWebMethod jsm = new()
             {
                 Name = method.Name,
                 Type = JSType.GetType(method.ReturnType),
-                HTTPMethod = scriptMethod.UseHttpGet ? "GET" : "POST",
+                HTTPMethod = scriptMethod.HttpMethods.First().ToString(),
                 ParentService = jclass,
                 Asynchronous = true,
                 ReturnType = JSType.GetType(method.ReturnType)
@@ -593,7 +592,6 @@ namespace tsgen
             foreach (var prop in type.GetProperties())
             {
                 if (prop.IsDefined(typeof(XmlIgnoreAttribute), false) ||
-                    prop.IsDefined(typeof(ScriptIgnoreAttribute), false) ||
                     prop.DeclaringType != type)
                     continue;
 
@@ -681,8 +679,7 @@ namespace tsgen
 
         static string ToCamelCase(string name)
         {
-            return name.Substring(0, 1).ToLower() +
-                name.Substring(1);
+            return name[..1].ToLower() + name[1..];
         }
 
         private void GenerateParameters(MethodBase method, JSFunction jsm)

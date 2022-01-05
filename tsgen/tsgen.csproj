@@ -34,6 +34,7 @@
 		<Content Include="Resources\BasicTypes.txt" />
 	</ItemGroup>
 	<ItemGroup>
+		<PackageReference Include="DocsByReflection" Version="1.0.14" />
 		<PackageReference Include="Microsoft.AspNet.WebApi.Core" Version="5.2.7" />
 		<PackageReference Include="System.ServiceModel.Primitives" Version="4.9.0" />
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />

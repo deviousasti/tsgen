@@ -11,6 +11,9 @@ using JSHints;
 using System.Threading.Tasks;
 using System.ServiceModel;
 using System.Web.Http;
+using System.Xml.Linq;
+using System.Xml;
+using System.Diagnostics;
 
 namespace tsgen
 {
@@ -112,7 +115,7 @@ namespace tsgen
             RootNamespace = new JSGlobal() { Name = ServiceAssembly.GetName().Name };
 
             if (OutputPath == null) OutputPath = String.Format("{0}.js", System.IO.Path.GetFileNameWithoutExtension(FilePath));
-            
+
             //Fold in starting assembly
             GenerateAssembly(ServiceAssembly);
 
@@ -172,9 +175,9 @@ namespace tsgen
                 Type[] types = assm.GetTypes();
                 foreach (var type in types)
                 {
-                    if (type.IsDefined(typeof(JsServiceAttribute), false) || 
+                    if (type.IsDefined(typeof(JsServiceAttribute), false) ||
                         type.IsSubclassOf(typeof(System.Web.Http.ApiController)) ||
-                        type.IsSubclassOf(typeof(Microsoft.AspNetCore.Mvc.Controller))
+                        type.IsSubclassOf(typeof(Microsoft.AspNetCore.Mvc.ControllerBase))
                     )
                         GenerateWebServiceClass(type);
 
@@ -289,8 +292,8 @@ namespace tsgen
                     GenerateType(returnType);
 
                     if (method.IsDefined(typeof(SynchronousAttribute), true))
-                    {                        
-                        jsm.ReturnType = JSType.GetType(returnType);                        
+                    {
+                        jsm.ReturnType = JSType.GetType(returnType);
                     }
                     else
                         jsm.ReturnType = JSType.GetType(method.ReturnType);
@@ -300,7 +303,7 @@ namespace tsgen
                     jsm.ReturnType = JSType.GetGenericType(JSType.Promise, JSType.GetType(method.ReturnType));
                 }
             }
-            
+
             GenerateParameters(method, jsm);
 
             return jsm;
@@ -335,8 +338,8 @@ namespace tsgen
                 {
                     if (GenerateComments)
                     {
-                        System.Xml.XmlElement summary = DocsByReflection.DocsByReflection.XMLFromMember(method);
-                        jsm.Description = summary.InnerText;
+                        var docs = DocsByReflection.DocsService.GetXmlFromMember(method);
+                        jsm.Description = GetElement(docs, "summary");
                     }
                 }
                 catch (Exception ex)
@@ -347,6 +350,12 @@ namespace tsgen
 
                 jclass.Methods.Add(jsm);
             }
+        }
+
+        static string GetElement(XmlElement docs, string tagName, Func<XmlElement, bool> filter = default)
+        {
+            filter = filter ?? (_ => true);
+            return docs.GetElementsByTagName(tagName).OfType<XmlElement>().Where(filter).FirstOrDefault()?.InnerText;
         }
 
         private JSFunction GenerateVirtualMethod(MethodInfo method)
@@ -378,7 +387,7 @@ namespace tsgen
             object[] attribs = method.GetCustomAttributes(true);
 
             var httpMethod = attribs.OfType<Microsoft.AspNetCore.Mvc.Routing.IActionHttpMethodProvider>().SelectMany(c => c.HttpMethods).FirstOrDefault() ?? "GET";
-            var routeTemplate = attribs.OfType< Microsoft.AspNetCore.Mvc.RouteAttribute> ().FirstOrDefault()?.Template;
+            var routeTemplate = attribs.OfType<Microsoft.AspNetCore.Mvc.RouteAttribute>().FirstOrDefault()?.Template;
 
             if (routeTemplate == null)
                 return null;
@@ -419,6 +428,9 @@ namespace tsgen
 
         private JSClass GenerateType(Type type, ClassType classType)
         {
+            if (type.FullName.Contains("Person"))
+                Debugger.Break();
+
             if (type.FullName != null && type.FullName.StartsWith("Microsoft."))
                 return JSClass.JSObject;
 
@@ -450,7 +462,10 @@ namespace tsgen
                 classType = ClassType.Interface;
 
             if (type.BaseType == typeof(Array))
+            {
+                GenerateType(type.GetElementType());
                 return JSClass.JSArray;
+            }
 
             if (type.IsValueType && !type.IsEnum)
                 return JSClass.JSObject;
@@ -498,16 +513,9 @@ namespace tsgen
                     break;
             }
 
-            try
+            if (GenerateComments)
             {
-                if (GenerateComments)
-                {
-                    jclass.Description = DocsByReflection.DocsByReflection.XMLFromType(type).InnerText;
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Could not find documentation for: {0}", type.FullName, ex.Message);
+                jclass.Description = DocsByReflection.DocsService.GetXmlFromType(type, false)?.InnerText;
             }
 
             jclass.Name = type.Name;
@@ -659,6 +667,13 @@ namespace tsgen
                 if (isNullable)
                     paramJsType = (paramJsType as tsgenericType).TypeParameters.First();
 
+                string description = null;
+                if (GenerateComments)
+                {
+                    var docs = DocsByReflection.DocsService.GetXmlFromParameter(param, false);
+                    description = docs?.InnerText;
+                }
+
                 jsm.Parameters.Add(new JSProperty()
                 {
                     Name = param.Name,
@@ -668,7 +683,8 @@ namespace tsgen
                     IsByRef = param.IsOut || param.ParameterType.IsByRef,
                     IsOptional = param.IsOptional || isNullable,
                     DefaultValue = param.HasDefaultValue && param.DefaultValue != null ? param.DefaultValue.ToString() : TSConstructs.Null,
-                    HasDefaultValue = param.HasDefaultValue
+                    HasDefaultValue = param.HasDefaultValue,
+                    Description = description
                 });
             }
         }

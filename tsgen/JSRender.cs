@@ -778,12 +778,6 @@ namespace tsgen
 
             OnRenderMethods(buffer);
 
-            //buffer.AppendLine();
-            //buffer.AppendFormat("static descendents = [];", FullName);
-            //buffer.AppendLine();
-
-            //buffer.AppendFormat("static base = {1};", FullName, ParentClass.FullName);
-
             if (!DefinitionOnly)
             {
 
@@ -792,10 +786,6 @@ namespace tsgen
                 buffer.AppendFormat("static TypeDescriptor: Type = {{ Type: window['{0}'], Name: '{1}', FullName : '{0}', Parent: {2} }};", FullName, Name, ParentClass.FullName);
 
                 buffer.AppendLine();
-                //                buffer.AppendFormat(@"getType(): Type {{
-                //                                        return window['{0}'].TypeDescriptor;
-                //                                  }}", FullName);
-
             }
             buffer.AppendLine();
             buffer.AppendLine("}");

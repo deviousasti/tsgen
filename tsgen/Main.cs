@@ -86,7 +86,6 @@ namespace tsgen
 
         public bool IncludeDependencies { get; set; }
 
-        public bool PackJS { get; set; }
 
         public bool Verbose { get; set; } = true;
 
@@ -143,13 +142,6 @@ namespace tsgen
             ResolveTypes(buffer);
 
             string Output = buffer.ToString();
-
-            if (PackJS)
-            {
-                Console.WriteLine("Packing output...");
-                Dean.Edwards.ECMAScriptPacker packer = new(Dean.Edwards.ECMAScriptPacker.PackerEncoding.Normal, true, false);
-                Output = packer.Pack(Output);
-            }
 
             Console.WriteLine("Writing file '{0}'", OutputPath);
             File.WriteAllText(OutputPath, Output);

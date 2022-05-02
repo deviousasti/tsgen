@@ -11,7 +11,12 @@ interface ByRef<T> {
 
 declare module Services {
     class WebServiceBase {
+        constructor(proxy : any);
         serviceRequest (method: string, route: string, parameters : object);
+    }
+
+    class EndpointBase {
+        
     }
 }
 

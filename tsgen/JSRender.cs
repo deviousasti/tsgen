@@ -1,3 +1,4 @@
+using Microsoft.FSharp.Control;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -5,7 +6,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using System.Web.Http;
 
 namespace tsgen
 {
@@ -53,22 +53,6 @@ namespace tsgen
         {
             get
             {
-                //                if (PropertyType == JsPropertyType.Observable)
-                //                    return "ko.observable()";
-
-                //                if (PropertyType == JsPropertyType.Dependant)
-                //                    return String.Format(@"ko.dependentObservable(
-                //                        {{
-                //                            read: function() {{ return this.proto{0}(); }},
-                //                            _write_: function(value) {{ this.proto{0}(value); }},
-                //                            deferEvaluation: false,
-                //                            owner: this
-                //                        }})",
-                //                        Name);
-
-                //                if (PropertyType == JsPropertyType.ObservableCollection)
-                //                    return "ko.observableArray([])";
-
                 if (Type.SourceType == typeof(string) && DefaultValue != "null")
                     return string.Format("\"{0}\"", Value == null ? string.Empty : Value.Replace("\"", "\\\""));
 
@@ -118,7 +102,7 @@ namespace tsgen
 
 
 
-          
+
             }
 
             if (IsWatched)
@@ -177,13 +161,13 @@ namespace tsgen
         public readonly static JSType Queue = new JSType(typeof(Queue<>)) { TypeName = "collections.Queue" };
 
         public readonly static JSType Promise = new JSType(typeof(Task<>)) { TypeName = "Promise" };
-        
+
         public readonly static JSType ApiResult = new JSType(typeof(Microsoft.AspNetCore.Mvc.ActionResult)) { TypeName = "ApiResult" };
 
         public readonly static JSType Observable = new JSType(typeof(IObservable<>)) { TypeName = "Rx.Observable" };
 
         public readonly static JSType DataTable = new JSType(typeof(DataTable)) { TypeName = "DataTable" };
-        
+
         public readonly static JSType Nullable = new JSType(typeof(Nullable)) { TypeName = "Nullable" };
 
         readonly static Dictionary<Type, JSType> TypeMap = new Dictionary<Type, JSType>();
@@ -249,6 +233,11 @@ namespace tsgen
         public override string ToString()
         {
             return TypeName;
+        }
+
+        public static JSType GetType(JSClass jsClass)
+        {
+            return new JSType { TypeName = jsClass.FullName, SourceType = typeof(object) };
         }
 
         public static JSType GetType(Type type)
@@ -334,6 +323,9 @@ namespace tsgen
             if (type == typeof(Task<>))
                 return JSType.Promise;
 
+            if (type == typeof(FSharpAsync<>))
+                return JSType.Promise;
+
             if (type == typeof(IObservable<>))
                 return JSType.Observable;
 
@@ -371,6 +363,7 @@ namespace tsgen
         {
             return (this as tsgenericType)?.TypeDefinition == type;
         }
+
     }
 
 
@@ -499,14 +492,14 @@ namespace tsgen
 
             WriteParameters(buffer, IncludeThis: false);
 
-            buffer.Append(")");
+            buffer.Append(')');
 
             if (Type != JSType.Constructor)
                 buffer.AppendFormat(": {0} ", ReturnType);
 
             if (!IsSignature)
             {
-                buffer.Append("{");
+                buffer.Append('{');
 
                 OnRenderBody(buffer);
 
@@ -589,7 +582,7 @@ namespace tsgen
                 buffer.Append("super(");
                 var constructor = Class.ParentClass.Constructors.FirstOrDefault(c => c.Parameters.Select(p => p.Name).Intersect(Parameters.Select(p => p.Name)).Count() == Parameters.Count);
                 if (constructor != null)
-                    constructor.WriteParameters(buffer, IncludeThis: false);
+                    buffer.Append(String.Join(", ", constructor.Parameters.Select(p => p.Name)));
 
                 buffer.AppendLine(");");
             }
@@ -615,10 +608,13 @@ namespace tsgen
             {
                 if (param.IsStatic) continue;
 
-                buffer.AppendFormat("if ({1} !== null) this.{0} = {1};",
-                    this.Class.Properties.Select(p => p.Name).FirstOrDefault(p => string.Equals(p, param.Name, StringComparison.OrdinalIgnoreCase)),
-                    param.Name
-                );
+                var matching = this.Class.Properties.Select(p => p.Name).FirstOrDefault(p => string.Equals(p, param.Name, StringComparison.OrdinalIgnoreCase));
+                if (matching != null)
+                    buffer.AppendFormat("if ({1} !== null) this.{0} = {1};",
+                        matching,
+                        param.Name
+                    );
+
                 buffer.AppendLine();
             }
 
@@ -726,10 +722,6 @@ namespace tsgen
 
     public class JSClass : JSRenderable
     {
-        public static readonly JSClass JSWebServiceClass = new JSClass() { Name = "Class", FullName = "Services.WebServiceBase" };
-
-        public static readonly JSClass JSProxyServiceClass = new JSClass() { Name = "Class", FullName = "Services.SocketProxyBase" };
-
         public static readonly JSClass JS = new JSClass() { Name = "JsonString", FullName = "Object", IsPrimitive = true };
 
         public static readonly JSClass JSObject = new JSClass() { Name = "Object", FullName = "Object", IsPrimitive = true };
@@ -738,23 +730,15 @@ namespace tsgen
 
         public static readonly JSClass JSFunction = new JSClass() { Name = "Function", FullName = "Function", IsPrimitive = true };
 
-        public JSClass()
-        {
-            ParentClass = JSObject;
-            Properties = new List<JSProperty>();
-            Methods = new List<JSFunction>();
-            Constructors = new List<JSConstructor>();
-        }
+        public List<JSConstructor> Constructors { get; set; } = new();
 
-        public List<JSConstructor> Constructors { get; set; }
+        public List<JSProperty> Properties { get; set; } = new();
 
-        public List<JSProperty> Properties { get; set; }
+        public List<JSFunction> Methods { get; set; } = new();
 
-        public List<JSFunction> Methods { get; set; }
+        public List<JSClass> Interfaces { get; set; } = new();
 
-        public List<JSClass> Interfaces { get; set; }
-
-        public JSClass ParentClass { get; set; }
+        public JSClass ParentClass { get; set; } = JSObject;
 
         public string FullName { get; set; }
 
@@ -823,19 +807,6 @@ namespace tsgen
 
         protected override void OnResolve(StringBuilder buffer)
         {
-            //            if (this.ParentClass != JSClass.JSObject)
-            //                buffer.AppendFormat("{1}.descendents.push({0});", FullName, ParentClass.FullName);
-            //            buffer.AppendLine();
-
-            //            Constructor.Resolve(buffer);
-
-            //            buffer.AppendFormat(@"{0}.Cast = function (from) {{
-            //                if (from instanceof {0}) return from;
-            //                var obj = new {0}();
-            //                $.extend(true, obj, from);
-            //                return obj;
-            //            }};", FullName);
-
             buffer.AppendLine();
         }
 
@@ -859,22 +830,79 @@ namespace tsgen
 
     }
 
-
-    public class JSSocketService : JSClass
+    public abstract class JSProxyService : JSClass
     {
-        public JSSocketService()
+        public static readonly JSVar ProxyParameter = new JSVar("proxy", JSType.Any);
+        public static readonly JSClass JSProxyBaseClass = new JSClass() { Name = "Class", FullName = "Services.ProxyBase" };
+        
+        public static JSClass ProxyServiceBaseClass(string name)
         {
-            ParentClass = JSClass.JSProxyServiceClass;
+            var jsclass = new JSClass() { Name = "Class", FullName = name, ParentClass = JSProxyBaseClass };
+            jsclass.Constructors.Add(new JSConstructor(jsclass){ 
+                Parameters = { ProxyParameter } 
+                }
+            );
+            return jsclass;
+        }
+
+        protected JSProxyService(JSClass parentClass)
+        {
+            ParentClass = parentClass;
+            Constructors = new() {
+                new JSConstructor(this) {
+                    Parameters = { ProxyParameter } }
+            };
         }
     }
 
-    public class JSWebService : JSClass
+    public class JSSocketService : JSProxyService
     {
+        public static readonly JSClass JSSocketServiceClass = ProxyServiceBaseClass("Services.SocketProxyBase");
+
+        public JSSocketService() : base(JSSocketServiceClass)
+        {
+
+        }
+    }
+
+    public class JSWebService : JSProxyService
+    {
+        public static readonly JSClass JSWebServiceClass = ProxyServiceBaseClass("Services.WebServiceBase");
+
         public string Prefix { get; set; }
 
-        public JSWebService()
+        public JSWebService() : base(JSWebServiceClass)
         {
-            ParentClass = JSClass.JSWebServiceClass;
+        }
+    }
+
+    public class JSWebEndpoint : JSClass
+    {
+        public static readonly JSClass JSWebEndpointClass = new JSClass() { Name = "Class", FullName = "Services.EndpointBase" };
+
+        public string Prefix { get; set; }
+
+        class JSWebEndpointConstructor : JSConstructor
+        {
+            public JSWebEndpointConstructor(JSWebEndpoint ep) : base(ep)
+            {
+                this.Parameters = new() { JSProxyService.ProxyParameter };
+            }
+
+            protected override void OnRenderBody(StringBuilder buffer)
+            {
+                base.OnRenderBody(buffer);
+                foreach (var prop in Class.Properties)
+                {
+                    buffer.AppendFormatLine("this.{0} = new {1}({2});", prop.Name, prop.Type, JSProxyService.ProxyParameter.Name);
+                }
+            }
+        }
+
+        public JSWebEndpoint()
+        {
+            ParentClass = JSWebEndpointClass;
+            Constructors = new() { new JSWebEndpointConstructor(this) };
         }
     }
 
@@ -883,14 +911,14 @@ namespace tsgen
         protected override void OnRender(StringBuilder buffer)
         {
 
-            buffer.Append("{");
+            buffer.Append('{');
 
             if (AppendNewLine)
                 buffer.AppendLine();
 
             BufferListAsOLN(buffer, Children().ToArray());
 
-            buffer.Append("}");
+            buffer.Append('}');
         }
     }
 

@@ -10,7 +10,6 @@ using System.Xml.Serialization;
 using JSHints;
 using System.Threading.Tasks;
 using System.ServiceModel;
-using System.Web.Http;
 using System.Xml.Linq;
 using System.Xml;
 using System.Diagnostics;
@@ -37,7 +36,6 @@ namespace tsgen
                 Wait = args.Contains("-wait"),
                 IncludeServiceLibrary = args.Contains("-lib"),
                 IncludeDependencies = args.Contains("-dep"),
-                PackJS = args.Contains("-pack"),
                 Verbose = args.Contains("-verbose"),
             };
 
@@ -70,7 +68,7 @@ namespace tsgen
 
         public Assembly ServiceAssembly { get; set; }
 
-        private bool GenerateComments { get; set; }
+        public bool GenerateComments { get; set; }
 
         public string FilePath { get; set; }
 
@@ -85,7 +83,6 @@ namespace tsgen
         public bool IncludeServiceLibrary { get; set; }
 
         public bool IncludeDependencies { get; set; }
-
 
         public bool Verbose { get; set; } = true;
 
@@ -164,18 +161,18 @@ namespace tsgen
                     GenerateAssembly(satelliteassm.Type.Assembly);
                 }
 
+                List<JSClass> services = new();
                 Type[] types = assm.GetTypes();
                 foreach (var type in types)
                 {
                     if (type.IsDefined(typeof(JsServiceAttribute), false) ||
-                        type.IsSubclassOf(typeof(System.Web.Http.ApiController)) ||
-                        type.IsSubclassOf(typeof(Microsoft.AspNetCore.Mvc.ControllerBase))
-                    )
-                        GenerateWebServiceClass(type);
+                        type.IsSubclassOf(typeof(Microsoft.AspNetCore.Mvc.ControllerBase)) &&
+                        !type.IsAbstract)
+                        services.Add(GenerateWebServiceClass(type));
 
                     if (type.IsDefined(typeof(JsSocketServiceAttribute), false) ||
                         type.IsDefined(typeof(ServiceContractAttribute), false))
-                        GenerateSocketServiceClass(type);
+                        services.Add(GenerateSocketServiceClass(type));
 
                     if (type.IsDefined(typeof(JsViewModelAttribute), false))
                         GenerateType(type, ClassType.ViewModel);
@@ -186,6 +183,29 @@ namespace tsgen
                     if (type.IsDefined(typeof(JsEnumAttribute), false))
                         GenerateType(type, ClassType.Enum);
 
+                }
+
+                var names = services.Select(c => c.FullName.Split('.')).ToArray();
+                var commonNamespace =
+                        Enumerable
+                        .Range(0, names.Max(n => n.Length))
+                        .Select(skip => names.Select(n =>
+                            n.Length < skip ? null :
+                            String.Join(".", n.SkipLast(skip))).Distinct())
+                        .MinBy(ns => ns.Count())
+                        .FirstOrDefault();
+
+                if (commonNamespace != null)
+                {
+                    var endpoint = new JSWebEndpoint { FullName = commonNamespace, Name = "Endpoint" };
+                    
+                    endpoint.Properties.AddRange(services.Select(svc => new JSProperty
+                    {
+                        Name = svc.Name.Replace("Controller", "").ToLowerInvariant(),
+                        PropertyType = JsPropertyType.Simple,
+                        Type = JSType.GetType(svc)
+                    }));
+                    GenerateNamespace(commonNamespace).Classes.Add(endpoint);
                 }
             }
             catch (ReflectionTypeLoadException ex)
@@ -253,9 +273,6 @@ namespace tsgen
             Type callback =
                 service.GetCustomAttributes(false).OfType<JsSocketServiceAttribute>().FirstOrDefault()?.CallbackType ??
                 service.GetCustomAttributes(false).OfType<ServiceContractAttribute>().FirstOrDefault()?.CallbackContract;
-
-
-            jclass.ParentClass = JSClass.JSProxyServiceClass;
 
             GenerateMethods(callback, jclass);
 
@@ -400,10 +417,17 @@ namespace tsgen
 
             JSOLN data = new JSOLN() { AppendNewLine = false };
 
-            foreach (var param in jsm.Parameters)
-            {
-                data.Properties.Add(new JSProperty() { Name = param.Name, Value = param.Name, Type = param.Type, AppendNewLine = false, PropertyType = JsPropertyType.Assignment });
-            }
+            jsm.Parameters.AddRange(
+                data.Properties.Select(param => new JSProperty()
+                {
+                    Name = param.Name,
+                    Value = param.Name,
+                    Type = param.Type,
+                    AppendNewLine = false,
+                    PropertyType = JsPropertyType.Assignment
+                })
+            );
+
 
             jsm.ObjectData = data;
             return jsm;

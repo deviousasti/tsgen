@@ -35,8 +35,9 @@
 	</ItemGroup>
 	<ItemGroup>
 		<PackageReference Include="DocsByReflection" Version="1.0.14" />
-		<PackageReference Include="Microsoft.AspNet.WebApi.Core" Version="5.2.7" />
+		<PackageReference Include="Microsoft.OpenApi" Version="1.3.1" />
 		<PackageReference Include="System.ServiceModel.Primitives" Version="4.9.0" />
+		<PackageReference Include="FSharp.Core" Version="6.0.3" />
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 	</ItemGroup>
 	<ItemGroup>

@@ -387,47 +387,57 @@ namespace tsgen
 
             JSWebService jclass = GenerateType(service, ClassType.WebService) as JSWebService;
             jclass.Prefix = jswebservice?.Template ?? "";
-
+            
             return jclass;
         }
 
         private JSFunction GenerateWebMethod(Type _service, MethodInfo method, JSWebService jclass)
         {
             object[] attribs = method.GetCustomAttributes(true);
+            T getAttr<T>() => attribs.OfType<T>().FirstOrDefault();
 
-            var httpMethod = attribs.OfType<Microsoft.AspNetCore.Mvc.Routing.IActionHttpMethodProvider>().SelectMany(c => c.HttpMethods).FirstOrDefault() ?? "GET";
-            var routeTemplate = attribs.OfType<Microsoft.AspNetCore.Mvc.RouteAttribute>().FirstOrDefault()?.Template;
+            var httpMethod = getAttr<Microsoft.AspNetCore.Mvc.Routing.IActionHttpMethodProvider>()?.HttpMethods?.FirstOrDefault() ?? "GET";
+            var routeTemplate = getAttr<Microsoft.AspNetCore.Mvc.RouteAttribute>()?.Template;
+            var policy = getAttr<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>()?.Policy;
 
             if (routeTemplate == null)
                 return null;
 
-            GenerateType(method.ReturnType);
+            var consumes = getAttr<Microsoft.AspNetCore.Mvc.ConsumesAttribute>();
+            var returnType = method.ReturnType;
+            var requestType = (consumes as Microsoft.AspNetCore.Http.Metadata.IAcceptsMetadata)?.RequestType;
+                    
+            GenerateType(returnType);
+            GenerateType(requestType);
 
             JSWebMethod jsm = new()
             {
                 Name = method.Name,
-                Type = JSType.GetType(method.ReturnType),
                 HTTPMethod = httpMethod,
                 ParentService = jclass,
-                ReturnType = JSType.GetType(method.ReturnType),
+                ReturnType = JSType.GetType(returnType),
                 RouteTemplate = routeTemplate,
+                Policy = policy
             };
 
             GenerateParameters(method, jsm);
-
-            JSOLN data = new JSOLN() { AppendNewLine = false };
-
-            jsm.Parameters.AddRange(
-                data.Properties.Select(param => new JSProperty()
-                {
-                    Name = param.Name,
-                    Value = param.Name,
-                    Type = param.Type,
-                    AppendNewLine = false,
-                    PropertyType = JsPropertyType.Assignment
-                })
-            );
-
+            
+            JSOLN data = new JSOLN()
+            {
+                AppendNewLine = false,
+                Properties =
+                    jsm.Parameters
+                    .Where(param => !routeTemplate.Contains($"{{{param.Name}}}"))
+                    .Select(param => new JSProperty()
+                    {
+                        Name = param.Name,
+                        Value = param.Name,
+                        Type = param.Type,
+                        AppendNewLine = false,
+                        PropertyType = JsPropertyType.Assignment
+                    })
+                    .ToList()
+            };
 
             jsm.ObjectData = data;
             return jsm;
@@ -444,13 +454,11 @@ namespace tsgen
 
         private JSClass GenerateType(Type type, ClassType classType)
         {
-            if (type.FullName.Contains("Person"))
-                Debugger.Break();
-
-            if (type.FullName != null && type.FullName.StartsWith("Microsoft."))
-                return JSClass.JSObject;
 
             if (type == null)
+                return JSClass.JSObject;
+
+            if (type.FullName != null && type.FullName.StartsWith("Microsoft."))
                 return JSClass.JSObject;
 
             if (type.Name.Contains("&"))
@@ -500,10 +508,6 @@ namespace tsgen
 
             switch (classType)
             {
-                case ClassType.OLN:
-                    jclass = new JSOLN();
-                    break;
-
                 case ClassType.Enum:
                     jclass = new JSEnum();
                     break;
@@ -681,7 +685,7 @@ namespace tsgen
                 var paramJsType = JSType.GetType(param.ParameterType);
                 var isNullable = paramJsType.IsGenericTypeOf(JSType.Nullable);
                 if (isNullable)
-                    paramJsType = (paramJsType as tsgenericType).TypeParameters.First();
+                    paramJsType = (paramJsType as TsGenericType).TypeParameters.First();
 
                 string description = null;
                 if (GenerateComments)

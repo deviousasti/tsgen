@@ -13,6 +13,7 @@ using System.ServiceModel;
 using System.Xml.Linq;
 using System.Xml;
 using System.Diagnostics;
+using Microsoft.FSharp.Reflection;
 
 namespace tsgen
 {
@@ -198,7 +199,7 @@ namespace tsgen
                 if (commonNamespace != null)
                 {
                     var endpoint = new JSWebEndpoint { FullName = commonNamespace, Name = "Endpoint" };
-                    
+
                     endpoint.Properties.AddRange(services.Select(svc => new JSProperty
                     {
                         Name = svc.Name.Replace("Controller", "").ToLowerInvariant(),
@@ -318,9 +319,12 @@ namespace tsgen
             return jsm;
         }
 
-        private void GenerateMethods(Type service, JSClass jclass)
+        private void GenerateMethods(Type type, JSClass jclass)
         {
-            foreach (var method in service.GetMethods())
+            if (FSharpType.IsRecord(type, null) || FSharpType.IsUnion(type, null))
+                return;
+
+            foreach (var method in type.GetMethods())
             {
                 JSFunction jsm = null;
 
@@ -328,9 +332,9 @@ namespace tsgen
                     continue;
 
                 if (jclass is JSSocketService)
-                    jsm = GenerateSocketMethod(service, method);
+                    jsm = GenerateSocketMethod(type, method);
                 else if (jclass is JSWebService)
-                    jsm = GenerateWebMethod(service, method, jclass as JSWebService);
+                    jsm = GenerateWebMethod(type, method, jclass as JSWebService);
                 else if (jclass.DefinitionOnly || method.IsDefined(typeof(JsMethodAttribute), false) || method.IsDefined(typeof(OperationContractAttribute), false))
                 {
                     jsm = GenerateVirtualMethod(method);
@@ -387,28 +391,43 @@ namespace tsgen
 
             JSWebService jclass = GenerateType(service, ClassType.WebService) as JSWebService;
             jclass.Prefix = jswebservice?.Template ?? "";
-            
+
             return jclass;
         }
 
         private JSFunction GenerateWebMethod(Type _service, MethodInfo method, JSWebService jclass)
         {
             object[] attribs = method.GetCustomAttributes(true);
-            T getAttr<T>() => attribs.OfType<T>().FirstOrDefault();
+            T getAttr<T>(Func<T, bool> pred = default) => attribs.OfType<T>().FirstOrDefault(pred ?? (_ => true));
+            (ParameterInfo, T) getParamAttr<T>() where T : Attribute =>
+                method
+                .GetParameters()
+                .Select(p => (p, p.GetCustomAttributes().OfType<T>().FirstOrDefault()))
+                .Where(p => p.Item2 != null)
+                .FirstOrDefault((null, null));
 
             var httpMethod = getAttr<Microsoft.AspNetCore.Mvc.Routing.IActionHttpMethodProvider>()?.HttpMethods?.FirstOrDefault() ?? "GET";
-            var routeTemplate = getAttr<Microsoft.AspNetCore.Mvc.RouteAttribute>()?.Template;
+            var routeTemplate = getAttr<Microsoft.AspNetCore.Mvc.Routing.IRouteTemplateProvider>(r => ! String.IsNullOrEmpty(r.Template))?.Template;
             var policy = getAttr<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>()?.Policy;
 
             if (routeTemplate == null)
                 return null;
 
             var consumes = getAttr<Microsoft.AspNetCore.Mvc.ConsumesAttribute>();
-            var returnType = method.ReturnType;
-            var requestType = (consumes as Microsoft.AspNetCore.Http.Metadata.IAcceptsMetadata)?.RequestType;
-                    
+            var produces = getAttr<Microsoft.AspNetCore.Mvc.ProducesAttribute>();
+            var consumesType = (consumes as Microsoft.AspNetCore.Http.Metadata.IAcceptsMetadata)?.RequestType;
+            var (bodyParam, _) = getParamAttr<Microsoft.AspNetCore.Mvc.FromBodyAttribute>();
+
+            var producesResponses = attribs.OfType<Microsoft.AspNetCore.Mvc.ProducesResponseTypeAttribute>();
+            var producesOkResponse = producesResponses.FirstOrDefault(r => r.StatusCode >= 200 && r.StatusCode < 300);
+            foreach (var production in producesResponses)
+            {
+                GenerateType(production.Type);
+            }
+
+            var returnType = produces?.Type ?? producesOkResponse?.Type ?? method.ReturnType;
             GenerateType(returnType);
-            GenerateType(requestType);
+            GenerateType(consumesType);
 
             JSWebMethod jsm = new()
             {
@@ -420,14 +439,26 @@ namespace tsgen
                 Policy = policy
             };
 
+            if (!(jsm.ReturnType is TsGenericType ts && ts.TypeDefinition == JSType.Promise))
+                jsm.ReturnType = TsGenericType.GetGenericType(JSType.Promise, jsm.ReturnType);
+
             GenerateParameters(method, jsm);
-            
+            if (consumes != null)
+            {
+                jsm.Parameters.Add(jsm.RequestParam = new JSVar("request", JSType.GetType(consumesType)));
+            }
+
+            if (bodyParam != null)
+            {
+                jsm.RequestParam = jsm.Parameters.FirstOrDefault(p => p.Name == bodyParam.Name);
+            }
+
             JSOLN data = new JSOLN()
             {
                 AppendNewLine = false,
                 Properties =
                     jsm.Parameters
-                    .Where(param => !routeTemplate.Contains($"{{{param.Name}}}"))
+                    .Where(param => !routeTemplate.Contains($"{{{param.Name}}}") && param.Name != jsm.RequestParam.Name)
                     .Select(param => new JSProperty()
                     {
                         Name = param.Name,
@@ -476,6 +507,9 @@ namespace tsgen
             if (type.IsEnum || type.IsDefined(typeof(JsEnumAttribute), false))
                 classType = ClassType.Enum;
 
+            if (FSharpType.IsUnion(type, null))
+                classType = ClassType.Enum;
+
             if (type.IsDefined(typeof(JsViewModelAttribute), false))
                 classType = ClassType.ViewModel;
 
@@ -483,6 +517,9 @@ namespace tsgen
                 return JSClass.JSObject;
 
             if (type.IsInterface)
+                classType = ClassType.Interface;
+
+            if (FSharpType.IsRecord(type, null))
                 classType = ClassType.Interface;
 
             if (type.BaseType == typeof(Array))
@@ -546,10 +583,8 @@ namespace tsgen
             if (!(jclass is JSEnum) && !(jclass is JSWebService))
                 jclass.ParentClass = GenerateType(type.BaseType);
 
-            //if (jclass is JSViewModel)
-            //    jclass.ParentClass = JSClass.JSViewModelClass;
-
             GenerateProperties(type, jclass);
+            GenerateCases(type, jclass);
             GenerateMethods(type, jclass);
 
             foreach (var cons in type.GetConstructors())
@@ -566,13 +601,24 @@ namespace tsgen
 
             jclass.Interfaces = type.GetInterfaces().Select(GenerateType).Where(d => d.DefinitionOnly).ToList();
 
-
             return jclass;
+        }
+
+        private void GenerateCases(Type type, JSClass jclass)
+        {
+            if (!FSharpType.IsUnion(type, null))
+                return;
+
+            foreach (var c in FSharpType.GetUnionCases(type, null))
+            {
+                if (c.GetFields().Length == 0)
+                    jclass.Properties.Add(new JSProperty { Name = c.Name, Value = $"'{c.Name}'", Type = JSType.String });
+            }            
         }
 
         private void GenerateProperties(Type type, JSClass jclass)
         {
-            if (jclass is JSSocketService || jclass is JSWebService)
+            if (jclass is JSSocketService || jclass is JSWebService || FSharpType.IsUnion(type, null))
                 return;
 
             foreach (var constant in type.GetFields(BindingFlags.Public | BindingFlags.Static)/*.Where(x =>  x.IsLiteral  && !x.IsInitOnly) */)
@@ -605,7 +651,12 @@ namespace tsgen
                 }
             }
 
-            foreach (var prop in type.GetProperties())
+            var props =
+                FSharpType.IsRecord(type, null) ?
+                FSharpType.GetRecordFields(type, null) :
+                type.GetProperties();
+
+            foreach (var prop in props)
             {
                 if (prop.IsDefined(typeof(XmlIgnoreAttribute), false) ||
                     prop.DeclaringType != type)

@@ -100,9 +100,6 @@ namespace tsgen
                     buffer.AppendFormatLine("{2} get {0} (): {1}{{ throw new Error(\"Not implemented: {0}\"); }}", Name, Type, IsStatic ? "static" : "");
                     break;
 
-
-
-
             }
 
             if (IsWatched)
@@ -255,10 +252,10 @@ namespace tsgen
         static JSType GetTypeImpl(Type type)
         {
             if (type.IsGenericType && !type.IsGenericTypeDefinition)
-                return new tsgenericType(type);
+                return new TsGenericType(type);
 
             if (type.IsByRef)
-                return new tsgenericType(type)
+                return new TsGenericType(type)
                 {
                     TypeDefinition = JSType.ByRef,
                     TypeParameters = new JSType[] { GetType(type.GetElementType()) }
@@ -294,8 +291,11 @@ namespace tsgen
             if (type == typeof(Array))
                 return JSType.Array;
 
+            if (type == typeof(Microsoft.FSharp.Collections.FSharpList<>))
+                return JSType.Array;
+
             if (type.BaseType == typeof(Array))
-                return new tsgenericType(type)
+                return new TsGenericType(type)
                 {
                     TypeDefinition = Array,
                     TypeParameters = new JSType[] { GetType(type.GetElementType()) },
@@ -326,6 +326,9 @@ namespace tsgen
             if (type == typeof(FSharpAsync<>))
                 return JSType.Promise;
 
+            if (type == typeof(Microsoft.FSharp.Core.Unit))
+                return JSType.Void;
+
             if (type == typeof(IObservable<>))
                 return JSType.Observable;
 
@@ -335,13 +338,16 @@ namespace tsgen
             if (type == typeof(void))
                 return Void;
 
-            if (type.FullName.StartsWith("Microsoft.FSharp.Core.FSharpOption") || type.FullName.StartsWith("System.Nullable"))
+            if (type == typeof(Microsoft.FSharp.Core.FSharpOption<>) || type == typeof(System.Nullable<>))
                 return JSType.Nullable;
 
             if (type.IsValueType && !type.IsEnum)
                 return JSType.Any;
 
             JSType newType = new JSType(type);
+
+            if (type.IsGenericTypeDefinition) 
+                newType.TypeName = type.FullName.Substring(0, type.FullName.LastIndexOf("`"));
 
             if (type.IsEnum)
                 newType.DefaultValue = string.Format("{0}.{1}", type.FullName, Enum.GetNames(type).First());
@@ -351,7 +357,7 @@ namespace tsgen
 
         public static JSType GetGenericType(JSType genericType, params JSType[] typeParams)
         {
-            return new tsgenericType(genericType.SourceType) { TypeDefinition = genericType, TypeParameters = typeParams };
+            return new TsGenericType() { SourceType = genericType.SourceType, TypeDefinition = genericType, TypeParameters = typeParams };
         }
 
         public virtual bool Is(JSType type)
@@ -361,26 +367,26 @@ namespace tsgen
 
         public bool IsGenericTypeOf(JSType type)
         {
-            return (this as tsgenericType)?.TypeDefinition == type;
+            return (this as TsGenericType)?.TypeDefinition == type;
         }
 
     }
 
 
-    public class tsgenericType : JSType
+    public class TsGenericType : JSType
     {
 
         public JSType TypeDefinition { get; set; }
 
         public IEnumerable<JSType> TypeParameters { get; set; }
 
-        public tsgenericType()
+        public TsGenericType()
             : base()
         {
 
         }
 
-        public tsgenericType(Type sourceType)
+        public TsGenericType(Type sourceType)
             : base(sourceType)
         {
             if (sourceType.IsGenericType)
@@ -408,11 +414,25 @@ namespace tsgen
 
         public override bool Is(JSType type)
         {
-            if (!(type is tsgenericType))
+            if (!(type is TsGenericType))
                 return this.TypeDefinition.TypeName == type.TypeName;
             else
                 return base.Is(type);
         }
+    }
+
+    public class TsUnionType : JSType
+    {
+        public IEnumerable<JSType> Cases { get; }
+
+        public TsUnionType(IEnumerable<JSType> types)
+        {
+            this.Cases = types;
+            this.SourceType = typeof(object);
+        }
+
+        public override string TypeName => System.String.Join(" | ", Cases);
+
     }
 
     #endregion JSType
@@ -452,7 +472,6 @@ namespace tsgen
         protected override void OnRender(StringBuilder buffer)
         {
             buffer.AppendFormat("{0}: {1}", Name, Type.TypeName);
-
         }
 
         public bool IsOptional { get; set; }
@@ -464,6 +483,8 @@ namespace tsgen
 
     public class JSFunction : JSVar
     {
+        protected new JSType Type { get => base.Type; set => base.Type = value; }
+
         public JSType ReturnType { get; set; }
 
         public virtual bool IsVirtual { get { return true; } }
@@ -643,6 +664,10 @@ namespace tsgen
 
         public string RouteTemplate { get; set; }
 
+        public string Policy { get; set; } = "";
+
+        public JSVar RequestParam { get; set; } = new JSVar("null");
+
         protected override void OnRenderBody(StringBuilder buffer)
         {
             base.OnRenderBody(buffer);
@@ -652,6 +677,10 @@ namespace tsgen
             buffer.AppendFormat("'{0}', ", HTTPMethod);
 
             buffer.Append(String.Format("`{0}/{1}`, ", ParentService.Prefix, RouteTemplate).Replace("{", "${"));
+
+            buffer.AppendFormat("'{0}', ", Policy);
+
+            buffer.AppendFormat("{0}, ", RequestParam.Name);
 
             ObjectData?.Render(buffer);
 
@@ -874,6 +903,12 @@ namespace tsgen
         public JSWebService() : base(JSWebServiceClass)
         {
         }
+
+        protected override void OnRenderProperties(StringBuilder buffer)
+        {
+            new JSProperty { Name = "prefix", Value = Prefix, Type = JSType.String }.Render(buffer);
+            base.OnRenderProperties(buffer);
+        }
     }
 
     public class JSWebEndpoint : JSClass
@@ -906,11 +941,17 @@ namespace tsgen
         }
     }
 
-    public class JSOLN : JSClass
+    public class JSOLN : JSVar
     {
+        public List<JSProperty> Properties { get; set; }
+
+        public override IEnumerable<JSRenderable> Children()
+        {
+            return Properties;
+        }
+
         protected override void OnRender(StringBuilder buffer)
         {
-
             buffer.Append('{');
 
             if (AppendNewLine)
@@ -939,6 +980,7 @@ namespace tsgen
         {
             IsPrimitive = true;
         }
+
         protected override void OnRender(StringBuilder buffer)
         {
             buffer.AppendFormat("export enum {0} ", Name);

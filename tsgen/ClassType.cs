@@ -3,7 +3,6 @@ namespace tsgen
     public enum ClassType
     {
         Default,
-        OLN,
         Enum,
         Class,        
         Interface,

@@ -672,7 +672,7 @@ namespace tsgen
         {
             base.OnRenderBody(buffer);
 
-            buffer.Append("return this.serviceRequest(");
+            buffer.Append("\treturn this.serviceRequest(");
 
             buffer.AppendFormat("'{0}', ", HTTPMethod);
 
@@ -737,11 +737,10 @@ namespace tsgen
     {
         protected override void OnRender(StringBuilder buffer)
         {
-            buffer.AppendFormat("export class {0} ", Name);
+            buffer.AppendFormat("export interface {0} ", Name);
 
             if (ParentClass != JSClass.JSObject)
                 buffer.AppendFormat("extends {0}", ParentClass.FullName);
-
 
             buffer.AppendLine("{");
 
@@ -855,8 +854,6 @@ namespace tsgen
                 buffer.AppendLine();
             }
         }
-
-
     }
 
     public abstract class JSProxyService : JSClass
@@ -914,6 +911,8 @@ namespace tsgen
     public class JSWebEndpoint : JSClass
     {
         public static readonly JSClass JSWebEndpointClass = new JSClass() { Name = "Class", FullName = "Services.EndpointBase" };
+
+        public const string ClassName = "Endpoint";
 
         public string Prefix { get; set; }
 

@@ -198,7 +198,11 @@ namespace tsgen
 
                 if (commonNamespace != null)
                 {
-                    var endpoint = new JSWebEndpoint { FullName = commonNamespace, Name = "Endpoint" };
+                    var endpoint = new JSWebEndpoint
+                    {
+                        FullName = $"{commonNamespace}.{JSWebEndpoint.ClassName}",
+                        Name = JSWebEndpoint.ClassName
+                    };
 
                     endpoint.Properties.AddRange(services.Select(svc => new JSProperty
                     {
@@ -206,6 +210,7 @@ namespace tsgen
                         PropertyType = JsPropertyType.Simple,
                         Type = JSType.GetType(svc)
                     }));
+
                     GenerateNamespace(commonNamespace).Classes.Add(endpoint);
                 }
             }
@@ -407,7 +412,7 @@ namespace tsgen
                 .FirstOrDefault((null, null));
 
             var httpMethod = getAttr<Microsoft.AspNetCore.Mvc.Routing.IActionHttpMethodProvider>()?.HttpMethods?.FirstOrDefault() ?? "GET";
-            var routeTemplate = getAttr<Microsoft.AspNetCore.Mvc.Routing.IRouteTemplateProvider>(r => ! String.IsNullOrEmpty(r.Template))?.Template;
+            var routeTemplate = getAttr<Microsoft.AspNetCore.Mvc.Routing.IRouteTemplateProvider>(r => !String.IsNullOrEmpty(r.Template))?.Template;
             var policy = getAttr<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>()?.Policy;
 
             if (routeTemplate == null)
@@ -613,7 +618,7 @@ namespace tsgen
             {
                 if (c.GetFields().Length == 0)
                     jclass.Properties.Add(new JSProperty { Name = c.Name, Value = $"'{c.Name}'", Type = JSType.String });
-            }            
+            }
         }
 
         private void GenerateProperties(Type type, JSClass jclass)

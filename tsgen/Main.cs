@@ -208,7 +208,8 @@ namespace tsgen
                     {
                         Name = svc.Name.Replace("Controller", "").ToLowerInvariant(),
                         PropertyType = JsPropertyType.Simple,
-                        Type = JSType.GetType(svc)
+                        Type = JSType.GetType(svc),
+                        HasDefaultValue = false,
                     }));
 
                     GenerateNamespace(commonNamespace).Classes.Add(endpoint);

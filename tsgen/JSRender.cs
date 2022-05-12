@@ -795,7 +795,7 @@ namespace tsgen
 
                 buffer.AppendLine();
                 buffer.AppendLine("//types");
-                buffer.AppendFormat("static TypeDescriptor: Type = {{ Type: window['{0}'], Name: '{1}', FullName : '{0}', Parent: {2} }};", FullName, Name, ParentClass.FullName);
+                buffer.AppendFormat("static TypeDescriptor: Type = {{ Name: '{1}', FullName : '{0}', Parent: {2} }};", FullName, Name, ParentClass.FullName);
 
                 buffer.AppendLine();
             }
@@ -1011,14 +1011,14 @@ namespace tsgen
         protected readonly JSProperty Specifier = new JSProperty() { Name = "__namespace", Value = "true", Type = JSType.Boolean };
 
         public JSNamespace()
-        {
+        {   
             Classes = new List<JSClass>();
             Namespaces = new List<JSNamespace>();
         }
 
         protected override void OnRender(StringBuilder buffer)
         {
-            buffer.AppendFormat("module {0} {{", FullName);
+            buffer.AppendFormat("namespace {0} {{", FullName);
             buffer.AppendLine();
 
             BufferList(buffer, Children());

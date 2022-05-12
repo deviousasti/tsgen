@@ -1,25 +1,25 @@
-﻿interface Type {
-    Type: Function;
+﻿
+declare interface Type {
     Name: string;
     FullName: string;
     Parent: Function;
 }
 
-interface ByRef<T> {
+declare interface ByRef<T> {
     ref: T;
 }
 
-declare module Services {
-    class WebServiceBase {
+declare type ApiResult = object;
+declare type Nullable<T> = T | null;
+
+namespace Services {
+    declare class WebServiceBase {
         constructor(proxy : any);
         prefix : string;
-        serviceRequest(method: string, route: string, policy : string, body : any, parameters : object) : any;
+        serviceRequest(method: string, route: string, policy : string, body : any, parameters : object) : Promise<any>;
     }
 
-    class EndpointBase {
+    declare class EndpointBase {
         
     }
 }
-
-declare type ApiResult = string;
-declare type Nullable<T> = T | null;

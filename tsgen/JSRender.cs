@@ -179,12 +179,14 @@ namespace tsgen
             : this()
         {
             SourceType = sourceType;
-            TypeName = string.Format("{0}.{1}", sourceType.Namespace, sourceType.Name);
+            TypeName = string.Format("{0}.{1}", sourceType.Namespace ?? "global", sourceType.Name);
         }
 
         public virtual IEnumerable<Type> Dependencies => new[] { SourceType };
 
         public virtual bool IsGenericType => false;
+
+        public bool IsGlobalQualified { get; set; }
 
         public Type SourceType { get; set; }
 
@@ -229,7 +231,7 @@ namespace tsgen
 
         public override string ToString()
         {
-            return TypeName;
+            return (IsGlobalQualified ? "globalThis." : "") + TypeName;
         }
 
         public static JSType GetType(JSClass jsClass)
@@ -285,6 +287,9 @@ namespace tsgen
             if (type == typeof(object))
                 return JSType.Object;
 
+            if (type == typeof(Uri))
+                return JSType.String;
+
             if (type == typeof(byte[]))
                 return JSType.ByteArray;
 
@@ -325,6 +330,9 @@ namespace tsgen
 
             if (type == typeof(FSharpAsync<>))
                 return JSType.Promise;
+
+            if (type == typeof(Microsoft.FSharp.Collections.FSharpMap<,>))
+                return JSType.Dictionary;
 
             if (type == typeof(Microsoft.FSharp.Core.Unit))
                 return JSType.Void;
@@ -676,7 +684,7 @@ namespace tsgen
 
             buffer.AppendFormat("'{0}', ", HTTPMethod);
 
-            buffer.Append(String.Format("`{0}/{1}`, ", ParentService.Prefix, RouteTemplate).Replace("{", "${"));
+            buffer.Append(String.Format("`{0}/{1}`, ", ParentService.Prefix, RouteTemplate).Replace("{", "${").Replace("?", ""));
 
             buffer.AppendFormat("'{0}', ", Policy);
 

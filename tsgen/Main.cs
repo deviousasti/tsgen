@@ -171,8 +171,7 @@ namespace tsgen
                         !type.IsAbstract)
                         services.Add(GenerateWebServiceClass(type));
 
-                    if (type.IsDefined(typeof(JsSocketServiceAttribute), false) ||
-                        type.IsDefined(typeof(ServiceContractAttribute), false))
+                    if (type.IsDefined(typeof(JsSocketServiceAttribute), false))
                         services.Add(GenerateSocketServiceClass(type));
 
                     if (type.IsDefined(typeof(JsViewModelAttribute), false))
@@ -204,12 +203,17 @@ namespace tsgen
                         Name = JSWebEndpoint.ClassName
                     };
 
-                    endpoint.Properties.AddRange(services.Select(svc => new JSProperty
+                    endpoint.Properties.AddRange(services.Select(svc =>
                     {
-                        Name = svc.Name.Replace("Controller", "").ToLowerInvariant(),
-                        PropertyType = JsPropertyType.Simple,
-                        Type = JSType.GetType(svc),
-                        HasDefaultValue = false,
+                        var svcType = JSType.GetType(svc);
+                        svcType.IsGlobalQualified = true;
+                        return new JSProperty
+                        {
+                            Name = svc.Name.Replace("Controller", "").ToLowerInvariant(),
+                            PropertyType = JsPropertyType.Simple,
+                            Type = svcType,
+                            HasDefaultValue = false,
+                        };
                     }));
 
                     GenerateNamespace(commonNamespace).Classes.Add(endpoint);
@@ -278,9 +282,7 @@ namespace tsgen
             if (jclass == null) return null;
 
             Type callback =
-                service.GetCustomAttributes(false).OfType<JsSocketServiceAttribute>().FirstOrDefault()?.CallbackType ??
-                service.GetCustomAttributes(false).OfType<ServiceContractAttribute>().FirstOrDefault()?.CallbackContract;
-
+                service.GetCustomAttributes(false).OfType<JsSocketServiceAttribute>().FirstOrDefault()?.CallbackType;
             GenerateMethods(callback, jclass);
 
             return jclass;
@@ -288,12 +290,12 @@ namespace tsgen
 
         private JSFunction GenerateSocketMethod(Type service, MethodInfo method)
         {
-            if (!method.IsDefined(typeof(JsMethodAttribute), false) && !method.IsDefined(typeof(OperationContractAttribute), false))
+            if (!method.IsDefined(typeof(JsMethodAttribute), false))
                 return null;
 
             JSFunction jsm;
 
-            if (service.IsDefined(typeof(JsSocketServiceAttribute), true) || service.IsDefined(typeof(ServiceContractAttribute), true))
+            if (service.IsDefined(typeof(JsSocketServiceAttribute), true))
                 jsm = new JSSocketHostMethod();
             else
                 jsm = new JSSocketClientMethod() { IsEvent = method.IsDefined(typeof(JsEventAttribute), true) };
@@ -341,7 +343,7 @@ namespace tsgen
                     jsm = GenerateSocketMethod(type, method);
                 else if (jclass is JSWebService)
                     jsm = GenerateWebMethod(type, method, jclass as JSWebService);
-                else if (jclass.DefinitionOnly || method.IsDefined(typeof(JsMethodAttribute), false) || method.IsDefined(typeof(OperationContractAttribute), false))
+                else if (jclass.DefinitionOnly || method.IsDefined(typeof(JsMethodAttribute), false))
                 {
                     jsm = GenerateVirtualMethod(method);
                 }
@@ -545,7 +547,7 @@ namespace tsgen
                 return TypeDictionary[type];
             }
 
-            JSNamespace ns = GenerateNamespace(type.Namespace);
+            JSNamespace ns = GenerateNamespace(type.Namespace ?? "global");
 
             JSClass jclass;
 

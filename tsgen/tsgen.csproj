@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
 		<TargetFramework>net6.0</TargetFramework>
@@ -12,8 +12,16 @@
 		<PackageId>tsgen</PackageId>
 		<PackageReleaseNotes>Initial release.</PackageReleaseNotes>
 		<PackageTags>codegen javascript typescript</PackageTags>
+		<PublishRepositoryUrl>true</PublishRepositoryUrl>
+		<DebugType>embedded</DebugType>
+		<EmbedUntrackedSources>true</EmbedUntrackedSources>
+		<IsPackable>true</IsPackable>
+		<PackAsTool>true</PackAsTool>
 		<NoWarn>1591</NoWarn>
 	</PropertyGroup>
+	<ItemGroup>
+	  <Compile Include="..\tshints\Hints.cs" Link="Hints.cs" />
+	</ItemGroup>
 	<ItemGroup>
 		<Compile Update="Properties\Resources.Designer.cs">
 			<AutoGen>True</AutoGen>
@@ -36,11 +44,7 @@
 	<ItemGroup>
 		<PackageReference Include="DocsByReflection" Version="1.0.14" />
 		<PackageReference Include="Microsoft.OpenApi" Version="1.3.1" />
-		<PackageReference Include="System.ServiceModel.Primitives" Version="4.9.0" />
 		<PackageReference Include="FSharp.Core" Version="6.0.3" />
-		<FrameworkReference Include="Microsoft.AspNetCore.App" />
-	</ItemGroup>
-	<ItemGroup>
-		<ProjectReference Include="..\tshints\tshints.csproj" />
+		<!--<FrameworkReference Include="Microsoft.AspNetCore.App" />-->
 	</ItemGroup>
 </Project>
